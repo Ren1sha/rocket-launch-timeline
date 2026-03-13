@@ -1,0 +1,1129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ISRO Mission Control — Rocket Launch Timeline</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&family=Rajdhani:wght@300;400;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+  :root {
+    --void: #000308;
+    --deep: #020a1a;
+    --nebula: #041428;
+    --plasma: #00d4ff;
+    --fire: #ff6b1a;
+    --exhaust: #ffaa44;
+    --star: #ffffff;
+    --dim: rgba(255,255,255,0.15);
+    --glow: rgba(0,212,255,0.3);
+    --warn: #ff3c3c;
+    --success: #00ff9d;
+    --mono: 'Share Tech Mono', monospace;
+    --display: 'Orbitron', sans-serif;
+    --body: 'Rajdhani', sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--void);
+    color: var(--star);
+    font-family: var(--body);
+    overflow-x: hidden;
+    cursor: none;
+  }
+
+  /* Custom cursor */
+  #cursor {
+    position: fixed; width: 12px; height: 12px;
+    background: var(--plasma); border-radius: 50%;
+    pointer-events: none; z-index: 9999;
+    transform: translate(-50%, -50%);
+    transition: width 0.2s, height 0.2s, background 0.2s;
+    mix-blend-mode: screen;
+    box-shadow: 0 0 20px var(--plasma), 0 0 40px rgba(0,212,255,0.5);
+  }
+  #cursor-ring {
+    position: fixed; width: 36px; height: 36px;
+    border: 1px solid rgba(0,212,255,0.5); border-radius: 50%;
+    pointer-events: none; z-index: 9998;
+    transform: translate(-50%, -50%);
+    transition: all 0.08s ease;
+  }
+
+  /* Stars background */
+  #stars-canvas {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 0; pointer-events: none;
+  }
+
+  /* ===== SECTIONS ===== */
+  section { position: relative; z-index: 1; }
+
+  /* ===== HERO ===== */
+  #hero {
+    height: 100vh; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    overflow: hidden; position: relative;
+  }
+  #three-canvas {
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%; z-index: 1;
+  }
+  .hero-content {
+    position: relative; z-index: 10;
+    text-align: center; pointer-events: none;
+  }
+  .isro-badge {
+    font-family: var(--mono); font-size: 0.75rem;
+    color: var(--plasma); letter-spacing: 0.4em;
+    text-transform: uppercase; margin-bottom: 1.5rem;
+    opacity: 0.8;
+  }
+  .hero-title {
+    font-family: var(--display); font-size: clamp(2.5rem, 7vw, 6rem);
+    font-weight: 900; line-height: 0.95;
+    text-transform: uppercase; letter-spacing: -0.02em;
+    background: linear-gradient(135deg, #fff 0%, var(--plasma) 50%, var(--exhaust) 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text; margin-bottom: 1rem;
+  }
+  .hero-sub {
+    font-family: var(--mono); font-size: 0.9rem;
+    color: rgba(255,255,255,0.5); letter-spacing: 0.2em;
+    margin-bottom: 3rem;
+  }
+  .mission-selector {
+    display: flex; gap: 1rem; justify-content: center;
+    flex-wrap: wrap; pointer-events: all;
+  }
+  .mission-btn {
+    font-family: var(--display); font-size: 0.7rem;
+    letter-spacing: 0.1em; padding: 0.8rem 1.8rem;
+    border: 1px solid rgba(0,212,255,0.4);
+    background: rgba(0,212,255,0.05);
+    color: var(--plasma); cursor: pointer;
+    transition: all 0.3s; text-transform: uppercase;
+    clip-path: polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%);
+  }
+  .mission-btn:hover, .mission-btn.active {
+    background: rgba(0,212,255,0.2);
+    border-color: var(--plasma);
+    box-shadow: 0 0 30px rgba(0,212,255,0.3), inset 0 0 20px rgba(0,212,255,0.1);
+    color: #fff;
+  }
+  .scroll-hint {
+    position: absolute; bottom: 2rem; left: 50%;
+    transform: translateX(-50%); z-index: 10;
+    font-family: var(--mono); font-size: 0.65rem;
+    color: rgba(255,255,255,0.3); letter-spacing: 0.3em;
+    text-transform: uppercase; animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:0.3} 50%{opacity:0.8} }
+
+  /* ===== MISSION STATS BAR ===== */
+  #mission-bar {
+    background: rgba(0,20,40,0.8); backdrop-filter: blur(20px);
+    border-top: 1px solid rgba(0,212,255,0.2);
+    border-bottom: 1px solid rgba(0,212,255,0.2);
+    padding: 1.2rem 4rem; display: flex;
+    justify-content: space-between; align-items: center;
+    position: sticky; top: 0; z-index: 100;
+    flex-wrap: wrap; gap: 1rem;
+  }
+  .stat-item { display: flex; flex-direction: column; gap: 0.2rem; }
+  .stat-label {
+    font-family: var(--mono); font-size: 0.6rem;
+    color: rgba(0,212,255,0.6); letter-spacing: 0.3em; text-transform: uppercase;
+  }
+  .stat-value {
+    font-family: var(--display); font-size: 1rem;
+    font-weight: 700; color: var(--star);
+  }
+  .stat-value.live { color: var(--success); }
+  .mission-name-bar {
+    font-family: var(--display); font-size: 0.8rem;
+    letter-spacing: 0.2em; color: var(--plasma);
+    text-transform: uppercase;
+  }
+
+  /* ===== TIMELINE SECTION ===== */
+  #timeline-section {
+    min-height: 400vh;
+    background: linear-gradient(to bottom, var(--void), var(--deep), var(--nebula), var(--deep));
+    position: relative; padding: 4rem 0;
+  }
+  .section-header {
+    text-align: center; padding: 4rem 2rem 2rem;
+    position: sticky; top: 80px; z-index: 20;
+    pointer-events: none;
+  }
+  .section-title {
+    font-family: var(--display); font-size: clamp(1.5rem, 4vw, 3rem);
+    font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--plasma);
+  }
+
+  /* Rocket track */
+  .rocket-track-container {
+    position: sticky; top: 0; height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    pointer-events: none; z-index: 15; overflow: hidden;
+  }
+  #rocket-svg-container {
+    position: absolute; left: 10%; top: 50%;
+    transform: translateY(-50%);
+    width: 120px;
+  }
+  .launch-path {
+    position: absolute; left: calc(10% + 60px); top: 0;
+    width: 2px; height: 100%;
+    background: linear-gradient(to bottom, transparent, rgba(0,212,255,0.3), rgba(255,107,26,0.6), transparent);
+  }
+
+  /* Timeline events */
+  .timeline-events {
+    position: relative; padding: 0 0 0 25%;
+    max-width: 1200px; margin: 0 auto;
+  }
+  .timeline-event {
+    padding: 8rem 4rem 8rem 8rem;
+    opacity: 0; transform: translateX(60px);
+    transition: opacity 0.6s, transform 0.6s;
+    position: relative;
+  }
+  .timeline-event.visible { opacity: 1; transform: translateX(0); }
+  .event-time {
+    font-family: var(--mono); font-size: 0.75rem;
+    color: var(--fire); letter-spacing: 0.2em;
+    margin-bottom: 0.5rem;
+  }
+  .event-name {
+    font-family: var(--display); font-size: clamp(1.2rem, 3vw, 2rem);
+    font-weight: 700; margin-bottom: 1rem;
+    text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .event-desc {
+    font-size: 1rem; color: rgba(255,255,255,0.6);
+    line-height: 1.7; max-width: 500px;
+    font-weight: 300; letter-spacing: 0.05em;
+  }
+  .event-node {
+    position: absolute; left: calc(25% - 40px);
+    top: 50%; transform: translateY(-50%);
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--fire); border: 2px solid var(--exhaust);
+    box-shadow: 0 0 20px var(--fire), 0 0 40px rgba(255,107,26,0.4);
+  }
+  .event-connector {
+    position: absolute; left: calc(25% - 32px);
+    top: 50%; width: 32px; height: 1px;
+    background: linear-gradient(to right, var(--fire), transparent);
+  }
+
+  /* ===== CHARTS SECTION ===== */
+  #charts-section {
+    min-height: 100vh; padding: 6rem 2rem;
+    background: var(--void);
+    position: relative; z-index: 1;
+  }
+  .charts-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+    gap: 2rem; max-width: 1400px; margin: 3rem auto 0;
+  }
+  .chart-card {
+    background: rgba(0,20,40,0.6);
+    border: 1px solid rgba(0,212,255,0.15);
+    padding: 2rem;
+    position: relative; overflow: hidden;
+    clip-path: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 20px 100%, 0 calc(100% - 20px));
+  }
+  .chart-card::before {
+    content: ''; position: absolute;
+    top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(to right, transparent, var(--plasma), transparent);
+  }
+  .chart-card-title {
+    font-family: var(--display); font-size: 0.75rem;
+    letter-spacing: 0.25em; text-transform: uppercase;
+    color: var(--plasma); margin-bottom: 1.5rem;
+    display: flex; align-items: center; gap: 0.8rem;
+  }
+  .chart-card-title::before {
+    content: ''; width: 6px; height: 6px;
+    background: var(--plasma); border-radius: 50%;
+    box-shadow: 0 0 10px var(--plasma);
+  }
+  .chart-container { width: 100%; }
+  svg.d3-chart { width: 100%; overflow: visible; }
+
+  /* Propellant bars */
+  .propellant-bar-wrap { margin-top: 1rem; }
+  .prop-label {
+    font-family: var(--mono); font-size: 0.7rem;
+    color: rgba(255,255,255,0.5); margin-bottom: 0.4rem;
+    display: flex; justify-content: space-between;
+  }
+  .prop-track {
+    height: 8px; background: rgba(255,255,255,0.05);
+    border-radius: 2px; overflow: hidden; margin-bottom: 1rem;
+    position: relative;
+  }
+  .prop-fill {
+    height: 100%; border-radius: 2px;
+    transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+  }
+  .prop-fill::after {
+    content: ''; position: absolute; right: 0; top: 0;
+    width: 4px; height: 100%; background: #fff;
+    opacity: 0.8; filter: blur(2px);
+  }
+
+  /* ===== MILESTONES PANEL ===== */
+  #milestones-section {
+    padding: 6rem 2rem; background: var(--deep);
+    position: relative; z-index: 1;
+  }
+  .milestones-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 1.5rem; max-width: 1400px; margin: 3rem auto 0;
+  }
+  .milestone-card {
+    border: 1px solid rgba(255,255,255,0.07);
+    padding: 1.8rem; position: relative;
+    background: rgba(255,255,255,0.02);
+    transition: all 0.4s;
+    clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+    cursor: default;
+  }
+  .milestone-card:hover {
+    background: rgba(0,212,255,0.05);
+    border-color: rgba(0,212,255,0.3);
+    transform: translateY(-4px);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 30px rgba(0,212,255,0.1);
+  }
+  .milestone-t {
+    font-family: var(--mono); font-size: 0.7rem;
+    color: var(--fire); letter-spacing: 0.2em; margin-bottom: 0.6rem;
+  }
+  .milestone-title {
+    font-family: var(--display); font-size: 1rem;
+    font-weight: 700; letter-spacing: 0.05em;
+    text-transform: uppercase; margin-bottom: 0.8rem;
+  }
+  .milestone-detail {
+    font-size: 0.85rem; color: rgba(255,255,255,0.5);
+    line-height: 1.6; font-weight: 300;
+  }
+  .milestone-status {
+    position: absolute; top: 1.2rem; right: 1.2rem;
+    font-family: var(--mono); font-size: 0.6rem;
+    padding: 0.2rem 0.6rem; letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+  .status-complete { color: var(--success); border: 1px solid rgba(0,255,157,0.3); }
+  .status-critical { color: var(--warn); border: 1px solid rgba(255,60,60,0.3); }
+  .status-nominal { color: var(--plasma); border: 1px solid rgba(0,212,255,0.3); }
+
+  /* ===== FOOTER ===== */
+  footer {
+    padding: 4rem 2rem; text-align: center;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    background: var(--void);
+    position: relative; z-index: 1;
+  }
+  .footer-logo {
+    font-family: var(--display); font-size: 1.2rem;
+    letter-spacing: 0.3em; color: var(--plasma);
+    margin-bottom: 1rem; text-transform: uppercase;
+  }
+  .footer-text {
+    font-family: var(--mono); font-size: 0.65rem;
+    color: rgba(255,255,255,0.2); letter-spacing: 0.2em;
+  }
+
+  /* ===== SCAN LINE EFFECT ===== */
+  body::after {
+    content: ''; position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+      0deg, transparent, transparent 2px,
+      rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px
+    );
+    pointer-events: none; z-index: 1000;
+  }
+
+  /* ===== LOADING SCREEN ===== */
+  #loader {
+    position: fixed; inset: 0; background: var(--void);
+    z-index: 10000; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 2rem;
+  }
+  .loader-title {
+    font-family: var(--display); font-size: 1.2rem;
+    letter-spacing: 0.4em; color: var(--plasma); text-transform: uppercase;
+  }
+  .loader-bar-wrap {
+    width: 300px; height: 2px; background: rgba(255,255,255,0.1);
+  }
+  .loader-bar {
+    height: 100%; background: var(--plasma); width: 0%;
+    transition: width 0.1s; box-shadow: 0 0 10px var(--plasma);
+  }
+  .loader-status {
+    font-family: var(--mono); font-size: 0.65rem;
+    color: rgba(255,255,255,0.3); letter-spacing: 0.2em;
+  }
+
+  /* ===== RESPONSIVE ===== */
+  @media (max-width: 768px) {
+    #mission-bar { padding: 1rem 1.5rem; }
+    .timeline-events { padding-left: 15%; }
+    .timeline-event { padding: 4rem 2rem 4rem 4rem; }
+    .charts-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Loading Screen -->
+<div id="loader">
+  <div class="loader-title">ISRO Mission Control</div>
+  <div class="loader-bar-wrap"><div class="loader-bar" id="loader-bar"></div></div>
+  <div class="loader-status" id="loader-status">INITIALIZING SYSTEMS...</div>
+</div>
+
+<!-- Custom Cursor -->
+<div id="cursor"></div>
+<div id="cursor-ring"></div>
+
+<!-- Stars Background -->
+<canvas id="stars-canvas"></canvas>
+
+<!-- ===== HERO ===== -->
+<section id="hero">
+  <canvas id="three-canvas"></canvas>
+  <div class="hero-content">
+    <div class="isro-badge">Indian Space Research Organisation · Mission Control</div>
+    <h1 class="hero-title">Rocket Launch<br>Timeline</h1>
+    <p class="hero-sub">T–00:00:00 · SRIHARIKOTA RANGE</p>
+    <div class="mission-selector">
+      <button class="mission-btn active" onclick="loadMission('chandrayaan3')">Chandrayaan-3</button>
+      <button class="mission-btn" onclick="loadMission('mangalyaan')">Mangalyaan</button>
+      <button class="mission-btn" onclick="loadMission('gaganyaan')">Gaganyaan</button>
+    </div>
+  </div>
+  <div class="scroll-hint">↓ Scroll to Launch ↓</div>
+</section>
+
+<!-- ===== MISSION STATS BAR ===== -->
+<div id="mission-bar">
+  <div class="stat-item">
+    <span class="stat-label">Mission</span>
+    <span class="stat-value mission-name-bar" id="bar-mission">Chandrayaan-3</span>
+  </div>
+  <div class="stat-item">
+    <span class="stat-label">Vehicle</span>
+    <span class="stat-value" id="bar-vehicle">LVM3-M4</span>
+  </div>
+  <div class="stat-item">
+    <span class="stat-label">Launch Date</span>
+    <span class="stat-value" id="bar-date">14 Jul 2023</span>
+  </div>
+  <div class="stat-item">
+    <span class="stat-label">Launch Site</span>
+    <span class="stat-value" id="bar-site">SDSC SHAR</span>
+  </div>
+  <div class="stat-item">
+    <span class="stat-label">Target Orbit</span>
+    <span class="stat-value" id="bar-orbit">Lunar Surface</span>
+  </div>
+  <div class="stat-item">
+    <span class="stat-label">Status</span>
+    <span class="stat-value live" id="bar-status">● SUCCESS</span>
+  </div>
+</div>
+
+<!-- ===== TIMELINE SECTION ===== -->
+<section id="timeline-section">
+  <div class="rocket-track-container">
+    <div class="launch-path"></div>
+    <div id="rocket-svg-container">
+      <!-- Animated SVG Rocket (LVM3) -->
+      <svg viewBox="0 0 120 300" xmlns="http://www.w3.org/2000/svg" id="rocket-svg">
+        <defs>
+          <linearGradient id="bodyGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#1a2a4a"/>
+            <stop offset="50%" stop-color="#2a4a7a"/>
+            <stop offset="100%" stop-color="#1a2a4a"/>
+          </linearGradient>
+          <linearGradient id="noseGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#ff8c00"/>
+            <stop offset="50%" stop-color="#ffaa44"/>
+            <stop offset="100%" stop-color="#ff6b1a"/>
+          </linearGradient>
+          <radialGradient id="exhaustGrad" cx="50%" cy="0%" r="100%">
+            <stop offset="0%" stop-color="#fff" stop-opacity="1"/>
+            <stop offset="30%" stop-color="#ffaa44" stop-opacity="0.9"/>
+            <stop offset="70%" stop-color="#ff6b1a" stop-opacity="0.5"/>
+            <stop offset="100%" stop-color="#ff3300" stop-opacity="0"/>
+          </radialGradient>
+          <filter id="glow">
+            <feGaussianBlur stdDeviation="3" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+        <!-- Exhaust Flame -->
+        <g id="exhaust-group">
+          <ellipse cx="60" cy="275" rx="18" ry="40" fill="url(#exhaustGrad)" opacity="0.9"/>
+          <ellipse cx="60" cy="270" rx="10" ry="25" fill="url(#exhaustGrad)" opacity="0.7"/>
+          <!-- Side booster exhausts -->
+          <ellipse cx="22" cy="250" rx="10" ry="28" fill="url(#exhaustGrad)" opacity="0.8"/>
+          <ellipse cx="98" cy="250" rx="10" ry="28" fill="url(#exhaustGrad)" opacity="0.8"/>
+        </g>
+        <!-- Side Boosters (S200) -->
+        <rect x="4" y="120" width="28" height="110" rx="6" fill="url(#bodyGrad)" stroke="#2a4a7a" stroke-width="1"/>
+        <rect x="88" y="120" width="28" height="110" rx="6" fill="url(#bodyGrad)" stroke="#2a4a7a" stroke-width="1"/>
+        <!-- Booster nozzles -->
+        <ellipse cx="18" cy="230" rx="10" ry="6" fill="#1a1a2e"/>
+        <ellipse cx="102" cy="230" rx="10" ry="6" fill="#1a1a2e"/>
+        <!-- Booster top -->
+        <path d="M4,120 Q18,85 32,120" fill="#ff6b1a" opacity="0.8"/>
+        <path d="M88,120 Q102,85 116,120" fill="#ff6b1a" opacity="0.8"/>
+        <!-- ISRO orange stripe on boosters -->
+        <rect x="4" y="155" width="28" height="8" fill="#ff6b1a" opacity="0.6"/>
+        <rect x="88" y="155" width="28" height="8" fill="#ff6b1a" opacity="0.6"/>
+        <!-- Core Stage (L110) -->
+        <rect x="34" y="80" width="52" height="155" rx="4" fill="url(#bodyGrad)" stroke="#2a4a7a" stroke-width="1.5"/>
+        <!-- Core nozzle cluster -->
+        <ellipse cx="60" cy="235" rx="18" ry="10" fill="#0a0a1e" stroke="#2a4a7a" stroke-width="1"/>
+        <circle cx="53" cy="233" r="5" fill="#1a1a3e"/>
+        <circle cx="67" cy="233" r="5" fill="#1a1a3e"/>
+        <!-- Payload fairing (C25) -->
+        <rect x="36" y="30" width="48" height="52" rx="3" fill="url(#bodyGrad)" stroke="#2a4a7a" stroke-width="1.5"/>
+        <!-- ISRO logo-ish stripes -->
+        <rect x="36" y="68" width="48" height="5" fill="#ff8c00" opacity="0.7"/>
+        <!-- Nose cone -->
+        <path d="M36,30 Q60,0 84,30" fill="url(#noseGrad)"/>
+        <!-- Nose tip glow -->
+        <circle cx="60" cy="5" r="3" fill="#fff" opacity="0.9" filter="url(#glow)"/>
+        <!-- Stage separation marks -->
+        <line id="sep1" x1="34" y1="80" x2="86" y2="80" stroke="rgba(0,212,255,0.4)" stroke-width="1" stroke-dasharray="4,3"/>
+        <!-- Details / windows -->
+        <rect x="52" y="105" width="16" height="6" rx="2" fill="rgba(0,212,255,0.2)" stroke="rgba(0,212,255,0.5)" stroke-width="0.5"/>
+        <!-- Fins -->
+        <path d="M34,200 L20,235 L34,225 Z" fill="#1a3a6a" stroke="#2a4a7a" stroke-width="1"/>
+        <path d="M86,200 L100,235 L86,225 Z" fill="#1a3a6a" stroke="#2a4a7a" stroke-width="1"/>
+      </svg>
+    </div>
+  </div>
+
+  <!-- Timeline scroll content -->
+  <div style="position:relative; z-index: 5;">
+    <div class="section-header">
+      <h2 class="section-title" id="timeline-title">Mission Timeline</h2>
+    </div>
+    <div class="timeline-events" id="timeline-events">
+      <!-- Populated by JS -->
+    </div>
+  </div>
+</section>
+
+<!-- ===== CHARTS SECTION ===== -->
+<section id="charts-section">
+  <div style="max-width:1400px; margin:0 auto;">
+    <h2 class="section-title" style="text-align:center; padding-bottom:0.5rem;">Flight Data Telemetry</h2>
+    <p style="text-align:center; font-family:var(--mono); font-size:0.7rem; color:rgba(255,255,255,0.3); letter-spacing:0.3em; margin-bottom:2rem;">REAL-TIME VISUALIZATION · SYNCHRONIZED WITH TIMELINE</p>
+    <div class="charts-grid">
+      <div class="chart-card">
+        <div class="chart-card-title">Altitude Profile (km)</div>
+        <div class="chart-container" id="altitude-chart"></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">Velocity Profile (km/s)</div>
+        <div class="chart-container" id="velocity-chart"></div>
+      </div>
+      <div class="chart-card" style="grid-column: span 1;">
+        <div class="chart-card-title">Propellant Levels</div>
+        <div class="propellant-bar-wrap" id="propellant-bars"></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">Dynamic Pressure — Max-Q (kPa)</div>
+        <div class="chart-container" id="pressure-chart"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== MILESTONES SECTION ===== -->
+<section id="milestones-section">
+  <div style="max-width:1400px; margin:0 auto;">
+    <h2 class="section-title" style="text-align:center; padding-bottom:0.5rem;">Key Mission Milestones</h2>
+    <p style="text-align:center; font-family:var(--mono); font-size:0.7rem; color:rgba(255,255,255,0.3); letter-spacing:0.3em; margin-bottom:0.5rem;">ALL SYSTEMS NOMINAL</p>
+    <div class="milestones-grid" id="milestones-grid">
+      <!-- Populated by JS -->
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer>
+  <div class="footer-logo">ISRO · Mission Control</div>
+  <p class="footer-text">ROCKET LAUNCH TIMELINE VISUALIZATION · BUILT WITH THREE.JS · GSAP · D3.JS</p>
+  <p class="footer-text" style="margin-top:0.5rem; opacity:0.5;">DATA BASED ON PUBLICLY AVAILABLE ISRO MISSION REPORTS</p>
+</footer>
+
+<script>
+// ============================================================
+// BACKEND SIMULATION — Mission Data API (Node.js/Express mock)
+// ============================================================
+async function loadMission(missionId) {
+  try {
+    const res = await fetch(`/api/missions/${missionId}`);
+    const { mission } = await res.json();
+
+    document.getElementById('bar-mission').textContent = mission.name;
+    document.getElementById('bar-vehicle').textContent = mission.vehicle;
+    document.getElementById('bar-date').textContent = mission.date;
+    document.getElementById('bar-site').textContent = mission.site;
+    document.getElementById('bar-orbit').textContent = mission.orbit;
+
+    const statusEl = document.getElementById('bar-status');
+    statusEl.textContent = '● ' + mission.status;
+    statusEl.className = 'stat-value ' + (mission.status === 'SUCCESS' ? 'live' : '');
+    statusEl.style.color = mission.status === 'IN PREPARATION' ? 'var(--exhaust)' : '';
+
+    const btns = document.querySelectorAll('.mission-btn');
+    const idx = ['chandrayaan3', 'mangalyaan', 'gaganyaan'].indexOf(missionId);
+    btns.forEach((b, i) => b.classList.toggle('active', i === idx));
+
+    document.getElementById('timeline-title').textContent = mission.name + ' — Mission Timeline';
+
+    renderTimeline(mission);
+    renderMilestones(mission);
+
+    setTimeout(() => {
+      drawLineChart('altitude-chart', mission.telemetry, '#00d4ff', 'km');
+      drawLineChart('velocity-chart', mission.telemetry, '#ff6b1a', 'km/s');
+      drawLineChart('pressure-chart', mission.telemetry, '#ff3c3c', 'kPa');
+      drawPropellantBars(mission.telemetry);
+    }, 100);
+
+  } catch (err) {
+    console.error('Failed to load mission:', err);
+  }
+}
+
+// ============================================================
+// STARS BACKGROUND
+// ============================================================
+const starsCanvas = document.getElementById('stars-canvas');
+const starsCtx = starsCanvas.getContext('2d');
+let stars = [];
+
+function initStars() {
+  starsCanvas.width = window.innerWidth;
+  starsCanvas.height = window.innerHeight;
+  stars = [];
+  for (let i = 0; i < 400; i++) {
+    stars.push({
+      x: Math.random() * starsCanvas.width,
+      y: Math.random() * starsCanvas.height,
+      r: Math.random() * 1.5,
+      a: Math.random(),
+      speed: 0.003 + Math.random() * 0.005,
+      phase: Math.random() * Math.PI * 2
+    });
+  }
+}
+
+function animateStars() {
+  starsCtx.clearRect(0, 0, starsCanvas.width, starsCanvas.height);
+  const t = Date.now() * 0.001;
+  stars.forEach(s => {
+    const alpha = 0.3 + 0.7 * Math.abs(Math.sin(t * s.speed + s.phase));
+    starsCtx.beginPath();
+    starsCtx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    starsCtx.fillStyle = `rgba(255,255,255,${alpha * s.a})`;
+    starsCtx.fill();
+  });
+  requestAnimationFrame(animateStars);
+}
+
+initStars();
+animateStars();
+window.addEventListener('resize', () => { initStars(); });
+
+// ============================================================
+// THREE.JS ROCKET (HERO)
+// ============================================================
+const threeCanvas = document.getElementById('three-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas: threeCanvas, antialias: true, alpha: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.position.set(0, 0, 8);
+
+// Lighting
+scene.add(new THREE.AmbientLight(0x1a2a4a, 2));
+const spotLight = new THREE.SpotLight(0x00d4ff, 4, 30, Math.PI / 6);
+spotLight.position.set(5, 5, 5);
+scene.add(spotLight);
+const fireLight = new THREE.PointLight(0xff6b1a, 3, 10);
+fireLight.position.set(0, -3, 0);
+scene.add(fireLight);
+
+// Rocket group
+const rocketGroup = new THREE.Group();
+
+// Body
+const bodyMat = new THREE.MeshPhongMaterial({ color: 0x1a3a6a, emissive: 0x0a1a3a, shininess: 80 });
+const body = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 2.5, 16), bodyMat);
+body.position.y = 0;
+rocketGroup.add(body);
+
+// Nose cone
+const noseMat = new THREE.MeshPhongMaterial({ color: 0xff8c00, emissive: 0x331500, shininess: 100 });
+const nose = new THREE.Mesh(new THREE.ConeGeometry(0.35, 1.2, 16), noseMat);
+nose.position.y = 1.85;
+rocketGroup.add(nose);
+
+// Side boosters
+const boosterMat = new THREE.MeshPhongMaterial({ color: 0x1a2a5a, emissive: 0x080d1a, shininess: 60 });
+[-0.65, 0.65].forEach(x => {
+  const booster = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 1.8, 12), boosterMat);
+  booster.position.set(x, -0.2, 0);
+  rocketGroup.add(booster);
+  const bNose = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.7, 12), noseMat);
+  bNose.position.set(x, 0.85, 0);
+  rocketGroup.add(bNose);
+});
+
+// Fins
+const finMat = new THREE.MeshPhongMaterial({ color: 0x0a2040, emissive: 0x020810 });
+[[-0.35, Math.PI/4], [0.35, -Math.PI/4]].forEach(([x, rot]) => {
+  const fin = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.8, 0.04), finMat);
+  fin.position.set(x * 1.2, -1.0, 0);
+  fin.rotation.z = rot;
+  rocketGroup.add(fin);
+});
+
+// Exhaust flame particles
+const exhaustParticles = [];
+const exhaustGeom = new THREE.SphereGeometry(0.04, 6, 6);
+for (let i = 0; i < 60; i++) {
+  const m = new THREE.MeshBasicMaterial({ color: i < 20 ? 0xffffff : i < 40 ? 0xff8800 : 0xff3300 });
+  const p = new THREE.Mesh(exhaustGeom, m);
+  p.visible = false;
+  exhaustParticles.push({ mesh: p, life: Math.random(), speed: 0.02 + Math.random() * 0.04 });
+  rocketGroup.add(p);
+}
+
+scene.add(rocketGroup);
+
+// Stars in 3D
+const starGeom = new THREE.BufferGeometry();
+const starVerts = [];
+for (let i = 0; i < 2000; i++) {
+  starVerts.push((Math.random()-0.5)*100, (Math.random()-0.5)*100, (Math.random()-0.5)*100);
+}
+starGeom.setAttribute('position', new THREE.Float32BufferAttribute(starVerts, 3));
+const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.08, transparent: true, opacity: 0.7 });
+scene.add(new THREE.Points(starGeom, starMat));
+
+let rocketLaunched = false;
+let launchProgress = 0;
+
+function animateThree() {
+  requestAnimationFrame(animateThree);
+  const t = Date.now() * 0.001;
+
+  if (!rocketLaunched) {
+    rocketGroup.rotation.y = t * 0.3;
+    rocketGroup.position.y = Math.sin(t * 0.5) * 0.1;
+  } else {
+    rocketGroup.position.y = -3 + launchProgress * 20;
+    rocketGroup.rotation.y += 0.005;
+  }
+
+  // Exhaust
+  exhaustParticles.forEach(p => {
+    p.life += p.speed;
+    if (p.life > 1) {
+      p.life = 0;
+      p.mesh.position.set(
+        (Math.random()-0.5)*0.3, -1.5, (Math.random()-0.5)*0.3
+      );
+      p.mesh.visible = true;
+    }
+    p.mesh.position.y -= p.speed * 1.2;
+    p.mesh.material.opacity = 1 - p.life;
+    const s = (1 - p.life) * 0.8 + 0.2;
+    p.mesh.scale.set(s, s, s);
+  });
+
+  fireLight.intensity = 2 + Math.sin(t * 8) * 0.8;
+  renderer.render(scene, camera);
+}
+animateThree();
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ============================================================
+// CUSTOM CURSOR
+// ============================================================
+const cursor = document.getElementById('cursor');
+const cursorRing = document.getElementById('cursor-ring');
+let mx = 0, my = 0, rx = 0, ry = 0;
+
+document.addEventListener('mousemove', e => { mx = e.clientX; my = e.clientY; });
+function animateCursor() {
+  rx += (mx - rx) * 0.12;
+  ry += (my - ry) * 0.12;
+  cursor.style.left = mx + 'px';
+  cursor.style.top = my + 'px';
+  cursorRing.style.left = rx + 'px';
+  cursorRing.style.top = ry + 'px';
+  requestAnimationFrame(animateCursor);
+}
+animateCursor();
+
+document.querySelectorAll('button, a').forEach(el => {
+  el.addEventListener('mouseenter', () => {
+    cursor.style.width = '20px';
+    cursor.style.height = '20px';
+    cursor.style.background = 'var(--exhaust)';
+  });
+  el.addEventListener('mouseleave', () => {
+    cursor.style.width = '12px';
+    cursor.style.height = '12px';
+    cursor.style.background = 'var(--plasma)';
+  });
+});
+
+// ============================================================
+// GSAP SCROLL TRIGGER
+// ============================================================
+gsap.registerPlugin(ScrollTrigger);
+
+// ============================================================
+// D3.JS CHARTS
+// ============================================================
+function drawLineChart(containerId, data, color, ylabel) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = '';
+  const W = container.clientWidth || 350, H = 180;
+  const m = { top: 15, right: 20, bottom: 35, left: 50 };
+  const w = W - m.left - m.right, h = H - m.top - m.bottom;
+
+  const svg = d3.select(`#${containerId}`).append('svg')
+    .attr('class', 'd3-chart')
+    .attr('viewBox', `0 0 ${W} ${H}`)
+    .attr('preserveAspectRatio', 'xMidYMid meet');
+
+  const g = svg.append('g').attr('transform', `translate(${m.left},${m.top})`);
+
+  const xScale = d3.scaleLinear().domain([0, data.time[data.time.length-1]]).range([0, w]);
+  const yValues = containerId.includes('altitude') ? data.altitude : containerId.includes('velocity') ? data.velocity : data.maxQ;
+  const yScale = d3.scaleLinear().domain([0, d3.max(yValues) * 1.1]).range([h, 0]);
+
+  // Grid
+  g.append('g').attr('class', 'grid')
+    .selectAll('line').data(yScale.ticks(4))
+    .join('line')
+    .attr('x1', 0).attr('x2', w)
+    .attr('y1', d => yScale(d)).attr('y2', d => yScale(d))
+    .attr('stroke', 'rgba(255,255,255,0.05)').attr('stroke-width', 1);
+
+  // Area
+  const area = d3.area()
+    .x((d, i) => xScale(data.time[i]))
+    .y0(h).y1((d, i) => yScale(d))
+    .curve(d3.curveCatmullRom);
+
+  g.append('path')
+    .datum(yValues)
+    .attr('d', area)
+    .attr('fill', color)
+    .attr('opacity', 0.08);
+
+  // Line
+  const line = d3.line()
+    .x((d, i) => xScale(data.time[i]))
+    .y((d, i) => yScale(d))
+    .curve(d3.curveCatmullRom);
+
+  const path = g.append('path')
+    .datum(yValues)
+    .attr('d', line)
+    .attr('fill', 'none')
+    .attr('stroke', color)
+    .attr('stroke-width', 2);
+
+  // Animate path
+  const totalLength = path.node().getTotalLength();
+  path.attr('stroke-dasharray', totalLength)
+    .attr('stroke-dashoffset', totalLength)
+    .transition().duration(2000).ease(d3.easeCubicOut)
+    .attr('stroke-dashoffset', 0);
+
+  // Glow line
+  g.append('path').datum(yValues)
+    .attr('d', line)
+    .attr('fill', 'none')
+    .attr('stroke', color)
+    .attr('stroke-width', 6)
+    .attr('opacity', 0.15)
+    .attr('filter', 'blur(4px)');
+
+  // Dots
+  g.selectAll('circle').data(yValues)
+    .join('circle')
+    .attr('cx', (d,i) => xScale(data.time[i]))
+    .attr('cy', (d,i) => yScale(d))
+    .attr('r', 3)
+    .attr('fill', color)
+    .attr('opacity', 0)
+    .transition().delay((d,i) => i * 200).duration(300)
+    .attr('opacity', 1);
+
+  // Axes
+  g.append('g').attr('transform', `translate(0,${h})`)
+    .call(d3.axisBottom(xScale).ticks(5).tickFormat(d => d + 's'))
+    .selectAll('text').style('fill', 'rgba(255,255,255,0.4)').style('font-family', 'Share Tech Mono').style('font-size', '9px');
+  g.select('.domain').attr('stroke', 'rgba(255,255,255,0.1)');
+  g.selectAll('.tick line').attr('stroke', 'rgba(255,255,255,0.1)');
+
+  g.append('g').call(d3.axisLeft(yScale).ticks(4))
+    .selectAll('text').style('fill', 'rgba(255,255,255,0.4)').style('font-family', 'Share Tech Mono').style('font-size', '9px');
+}
+
+function drawPropellantBars(data) {
+  const container = document.getElementById('propellant-bars');
+  container.innerHTML = '';
+  data.propellant.forEach(p => {
+    const wrap = document.createElement('div');
+    wrap.innerHTML = `
+      <div class="prop-label">
+        <span>${p.name}</span>
+        <span>${p.pct}%</span>
+      </div>
+      <div class="prop-track">
+        <div class="prop-fill" style="width:${p.pct}%; background: linear-gradient(to right, ${p.color}88, ${p.color});">
+        </div>
+      </div>
+    `;
+    container.appendChild(wrap);
+    setTimeout(() => {
+      wrap.querySelector('.prop-fill').style.width = p.pct + '%';
+    }, 100);
+  });
+}
+
+// ============================================================
+// TIMELINE EVENTS RENDERER
+// ============================================================
+function renderTimeline(mission) {
+  const container = document.getElementById('timeline-events');
+  container.innerHTML = '';
+  mission.events.forEach((ev, i) => {
+    const div = document.createElement('div');
+    div.className = 'timeline-event';
+    div.style.cssText = `transition-delay: ${i * 0.05}s`;
+    div.innerHTML = `
+      <div class="event-node" style="${ev.highlight ? 'background:var(--plasma); box-shadow: 0 0 30px var(--plasma);' : ''}"></div>
+      <div class="event-connector"></div>
+      <div class="event-time">${ev.t}</div>
+      <div class="event-name" style="${ev.highlight ? 'color: var(--plasma);' : ''}">${ev.name}</div>
+      <div class="event-desc">${ev.desc}</div>
+    `;
+    container.appendChild(div);
+  });
+
+  // Scroll observer
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) e.target.classList.add('visible');
+    });
+  }, { threshold: 0.2 });
+
+  container.querySelectorAll('.timeline-event').forEach(el => observer.observe(el));
+}
+
+// ============================================================
+// MILESTONES RENDERER
+// ============================================================
+function renderMilestones(mission) {
+  const grid = document.getElementById('milestones-grid');
+  grid.innerHTML = '';
+  mission.milestones.forEach(m => {
+    const card = document.createElement('div');
+    card.className = 'milestone-card';
+    card.innerHTML = `
+      <div class="milestone-status status-${m.status}">${m.status}</div>
+      <div class="milestone-t">${m.t}</div>
+      <div class="milestone-title">${m.title}</div>
+      <div class="milestone-detail">${m.detail}</div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+// ============================================================
+// MISSION LOADER (simulates API call to Express backend)
+// ============================================================
+async function loadMission(missionId) {
+  try {
+    const res = await fetch(`/api/missions/${missionId}`);
+    const { mission } = await res.json();
+
+    document.getElementById('bar-mission').textContent = mission.name;
+    document.getElementById('bar-vehicle').textContent = mission.vehicle;
+    document.getElementById('bar-date').textContent = mission.date;
+    document.getElementById('bar-site').textContent = mission.site;
+    document.getElementById('bar-orbit').textContent = mission.orbit;
+
+    const statusEl = document.getElementById('bar-status');
+    statusEl.textContent = '● ' + mission.status;
+    statusEl.className = 'stat-value ' + (mission.status === 'SUCCESS' ? 'live' : '');
+    statusEl.style.color = mission.status === 'IN PREPARATION' ? 'var(--exhaust)' : '';
+
+    const btns = document.querySelectorAll('.mission-btn');
+    const idx = ['chandrayaan3', 'mangalyaan', 'gaganyaan'].indexOf(missionId);
+    btns.forEach((b, i) => b.classList.toggle('active', i === idx));
+
+    document.getElementById('timeline-title').textContent = mission.name + ' — Mission Timeline';
+
+    renderTimeline(mission);
+    renderMilestones(mission);
+
+    setTimeout(() => {
+      drawLineChart('altitude-chart', mission.telemetry, '#00d4ff', 'km');
+      drawLineChart('velocity-chart', mission.telemetry, '#ff6b1a', 'km/s');
+      drawLineChart('pressure-chart', mission.telemetry, '#ff3c3c', 'kPa');
+      drawPropellantBars(mission.telemetry);
+    }, 100);
+
+  } catch (err) {
+    console.error('Failed to load mission:', err);
+  }
+}
+
+// ============================================================
+// GSAP SCROLL ANIMATIONS — Rocket Launch
+// ============================================================
+gsap.to('#rocket-svg-container', {
+  scrollTrigger: {
+    trigger: '#timeline-section',
+    start: 'top top',
+    end: 'bottom bottom',
+    scrub: 1,
+    onUpdate: (self) => {
+      const progress = self.progress;
+      const rocketEl = document.getElementById('rocket-svg-container');
+      // Move rocket up as user scrolls
+      const startY = 0;
+      const travelVh = -80;
+      rocketEl.style.transform = `translateY(calc(-50% + ${progress * travelVh}vh))`;
+
+      // Flame intensity
+      const exhaust = document.getElementById('exhaust-group');
+      if (exhaust) {
+        exhaust.setAttribute('transform', `scale(${1 + progress * 0.5})`);
+      }
+
+      // Three.js rocket launches
+      if (progress > 0.05) {
+        rocketLaunched = true;
+        launchProgress = (progress - 0.05) / 0.95;
+      } else {
+        rocketLaunched = false;
+      }
+    }
+  }
+});
+
+// Hero elements entrance
+gsap.from('.hero-content > *', {
+  y: 40, opacity: 0, duration: 1.2, stagger: 0.2,
+  ease: 'power3.out', delay: 1.5
+});
+
+// Charts section
+gsap.from('.chart-card', {
+  scrollTrigger: { trigger: '#charts-section', start: 'top 80%' },
+  y: 50, opacity: 0, duration: 0.8, stagger: 0.15, ease: 'power2.out',
+  onComplete: () => {
+    const mission = MISSIONS_DB[Object.keys(MISSIONS_DB)[0]];
+    drawLineChart('altitude-chart', mission.telemetry, '#00d4ff', 'km');
+    drawLineChart('velocity-chart', mission.telemetry, '#ff6b1a', 'km/s');
+    drawLineChart('pressure-chart', mission.telemetry, '#ff3c3c', 'kPa');
+  }
+});
+
+// Milestones
+gsap.from('.milestone-card', {
+  scrollTrigger: { trigger: '#milestones-section', start: 'top 80%' },
+  scale: 0.9, opacity: 0, duration: 0.5, stagger: 0.06, ease: 'back.out(1.2)'
+});
+
+// Mission bar
+gsap.from('#mission-bar', {
+  scrollTrigger: { trigger: '#mission-bar', start: 'top 90%' },
+  y: -30, opacity: 0, duration: 0.6, ease: 'power2.out'
+});
+
+// ============================================================
+// LOADING SEQUENCE
+// ============================================================
+const loadingMessages = [
+  "INITIALIZING SYSTEMS...",
+  "LOADING MISSION DATA...",
+  "CALIBRATING TELEMETRY...",
+  "SYNCING TIMELINE...",
+  "READY FOR LAUNCH."
+];
+let loadPct = 0;
+const loaderBar = document.getElementById('loader-bar');
+const loaderStatus = document.getElementById('loader-status');
+
+function advanceLoader() {
+  loadPct += 20;
+  loaderBar.style.width = loadPct + '%';
+  loaderStatus.textContent = loadingMessages[Math.floor(loadPct/20) - 1];
+  if (loadPct < 100) {
+    setTimeout(advanceLoader, 280 + Math.random() * 220);
+  } else {
+    setTimeout(() => {
+      gsap.to('#loader', {
+        opacity: 0, duration: 0.8, ease: 'power2.in',
+        onComplete: () => { document.getElementById('loader').style.display = 'none'; }
+      });
+    }, 400);
+  }
+}
+setTimeout(advanceLoader, 300);
+
+// ============================================================
+// INITIALIZE
+// ============================================================
+loadMission('chandrayaan3');
+</script>
+</body>
+</html>
